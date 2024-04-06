@@ -1,0 +1,1 @@
+# kanji-chunom-mapping
