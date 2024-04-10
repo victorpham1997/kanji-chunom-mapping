@@ -43,7 +43,7 @@ nom_df['nom_url'] = nom_df.unihan_code.apply(lambda c: nom_base_url.format(uniha
 nom_df['unihan_url'] = nom_df.unihan_code.apply(lambda c: unihan_base_url.format(unihan_code = c))
 
 nom_df.to_pickle("./kanji-chunom-mapping/nom_df_url.pickle")
-nom_df = pd.read_pickle("./kanji-chunom-mapping/nom_df_url.pickle")
+nom_df = pd.read_pickle("./nom_df_url.pickle")
 
 # %%
 # Async to extrac unihan from unicode.org
@@ -139,6 +139,34 @@ for url in nom_df[nom_df["nom_viet"].isnull()]["nom_url"]:
     nom_eng = find_ls[-2]
     nom_viet = find_ls[1]
     nom_df.loc[nom_df['nom_url'] == url, ["nom_eng","nom_viet"]] = [[nom_eng, nom_viet]]
+
+for url in nom_df["jisho_url"]:
+    try:
+        print(f"querying from {url}")
+        res = requests.get(url)
+        soup = BeautifulSoup(res.text)
+        if not soup.find("div", {"class": "kanji-details__main-meanings"}):
+            print(f"url {url} cannot find any kanji")
+            nom_df.loc[nom_df['jisho_url'] == url, ["kanji_eng","jlpt_level","jisho_kanji_word"]] = [[""]*3]
+        else:
+            kanji_eng = soup.find("div", {"class": "kanji-details__main-meanings"}).text.strip("\n ")
+            on_read_children = soup.find("dt", string="On:")
+            if on_read_children:
+                on_read_children = on_read_children.parent.findChild("dd").findChildren("a")
+                on_read_children_ls = [a.text for a in on_read_children]  
+                on_read_children_ls = [f"{on}|{romkan.to_roma(on)}" for on in on_read_children_ls]  
+            else:
+                on_read_children_ls = []
+            jlpt_level = soup.find("div", {"class": "jlpt"})
+            if jlpt_level:
+                jlpt_level = jlpt_level.findChild('strong').text
+                
+            jisho_kanji_word = "https:" + soup.find("a", string=re.compile('Words containing')).attrs["href"]
+
+            nom_df.loc[nom_df['jisho_url'] == url, [f"on_read_{i+1}" for i in range(len(on_read_children_ls))] + ["kanji_eng","jlpt_level","jisho_kanji_word"]] = [on_read_children_ls + [kanji_eng, jlpt_level, jisho_kanji_word]]
+    except Exception as e:
+            print(f"Error getting {url} due to error {e}")
+            continue  
 
 
 loop = asyncio.new_event_loop()
